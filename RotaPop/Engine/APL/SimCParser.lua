@@ -542,8 +542,11 @@ function SE:GetNextSpell_Install(lists)
                 local condition = entry[2]
 
                 if spellID then
-                    local ready = Rotapop.CooldownAdapter:IsReady(spellID)
-                    if ready then
+                    local readyOk, ready = pcall(
+                        Rotapop.CooldownAdapter.IsReady,
+                        Rotapop.CooldownAdapter, spellID
+                    )
+                    if readyOk and ready then
                         local condMet = true
                         if condition then
                             local ok, result = pcall(condition)
@@ -563,8 +566,8 @@ function SE:GetNextSpell_Install(lists)
                 local spellID   = entry[1]
                 local condition = entry[2]
                 if spellID then
-                    local spellInfo = C_Spell.GetSpellInfo(spellID)
-                    if spellInfo then
+                    local infoOk, spellInfo = pcall(C_Spell.GetSpellInfo, spellID)
+                    if infoOk and spellInfo then
                         local condMet = true
                         if condition then
                             local ok, result = pcall(condition)
@@ -581,8 +584,8 @@ function SE:GetNextSpell_Install(lists)
         -- Pass 3: any known spell
         for _, entry in ipairs(list) do
             if not entry.sublist and entry[1] then
-                local spellInfo = C_Spell.GetSpellInfo(entry[1])
-                if spellInfo then
+                local infoOk, spellInfo = pcall(C_Spell.GetSpellInfo, entry[1])
+                if infoOk and spellInfo then
                     return entry[1], false
                 end
             end

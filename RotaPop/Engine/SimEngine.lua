@@ -62,9 +62,12 @@ function SE:GetNextSpell(unitState)
         -- Spell bekannt und grundsätzlich castbar?
         if spellState and spellState.isKnown then
             -- IsReady-Check (Cooldown / Charges)
-            local ready = Rotapop.CooldownAdapter:IsReady(entry.spellID)
+            local readyOk, ready = pcall(
+                Rotapop.CooldownAdapter.IsReady,
+                Rotapop.CooldownAdapter, entry.spellID
+            )
 
-            if ready then
+            if readyOk and ready then
                 -- APL-Condition evaluieren
                 local conditionMet = true
                 if entry.condition then
