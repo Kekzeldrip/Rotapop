@@ -6,9 +6,10 @@
 ## DefaultState: enabled
 
 Core/EventBus.lua
-Core/StateCache.lua
 Core/CooldownAdapter.lua
+Core/StateCache.lua
 Engine/SimEngine.lua
+Engine/DefaultPriority.lua
 Engine/APL/ShamanEnhancement.lua
 UI/DebugOverlay.lua
 UI/NextSpellDisplay.lua
