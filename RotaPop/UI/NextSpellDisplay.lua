@@ -75,7 +75,7 @@ function Display:Update()
         if isReady == nil then isReady = true end
     end
 
-    if not ok or not nextSpell then
+    if not ok or not nextSpell or not isReady then
         if lastSpellID ~= nil then
             icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
             icon:SetDesaturated(false)
