@@ -133,16 +133,18 @@ function CA:GetSpellState(spellID)
     local cooldown = {
         start        = cd and cd.startTime or nil,
         duration     = cd and cd.duration  or nil,
-        isEnabled    = cd and cd.isEnabled or nil,
-        modRate      = cd and cd.modRate   or nil,
-        -- [context sensitive] isOnGCDMaybe is a heuristic; reliable use
-        -- typically in conjunction with SPELL_UPDATE_COOLDOWN.
+        -- Preserve boolean false correctly (cd and cd.isEnabled or nil loses false).
+        isEnabled    = cd and cd.isEnabled,
+        modRate      = cd and cd.modRate,
+        -- isOnGCDMaybe: use isOnGCD field (12.x) when present; fall back to
+        -- duration heuristic for backwards compatibility.
+        -- https://warcraft.wiki.gg/wiki/Struct_SpellCooldownInfo
         isOnGCDMaybe = (
             cd
             and cd.startTime
             and cd.startTime > 0
             and cd.duration
-            and cd.duration <= 1.5
+            and (cd.isOnGCD ~= nil and cd.isOnGCD or cd.duration <= 1.5)
         ) or false,
     }
 
@@ -192,15 +194,73 @@ function CA:IsReady(spellID)
     if cd.isEnabled == false then return false end
     if not cd.startTime or cd.startTime == 0 then return true end
     if not cd.duration  or cd.duration  == 0 then return true end
-    -- [context sensitive] GCD ignorieren
-    if cd.duration <= 1.5 then return true end
 
-    return (cd.startTime + cd.duration) <= now
+    -- GCD detection: use isOnGCD field (12.x) when available, fall back to
+    -- duration heuristic for backwards compatibility.
+    local isGCD = (cd.isOnGCD ~= nil) and cd.isOnGCD or (cd.duration <= 1.5)
+    if isGCD then return true end
+
+    -- Apply modRate to effective duration when present and meaningful.
+    -- modRate != 1 means the CD ticks faster/slower than normal.
+    local effectiveDuration = (cd.modRate and cd.modRate ~= 0 and cd.modRate ~= 1)
+        and (cd.duration / cd.modRate) or cd.duration
+
+    local remaining = (cd.startTime + effectiveDuration) - now
+
+    -- timeUntilEndOfStartRecovery (12.x): if the start-recovery window is
+    -- still active and longer than the main CD, respect that too.
+    if cd.timeUntilEndOfStartRecovery and cd.timeUntilEndOfStartRecovery > 0 then
+        remaining = math.max(remaining, cd.timeUntilEndOfStartRecovery)
+    end
+
+    if remaining > 0 then return false end
+
+    -- 3. Optional: C_CooldownViewer enrichment — override spell + category CD
+    -- https://warcraft.wiki.gg/wiki/API_C_CooldownViewer.GetCooldownViewerCooldownInfo
+    if hasCooldownViewer then
+        local cvInfo = getRawCooldownViewerInfo(spellID)
+        if cvInfo then
+            -- Check if an override spell (e.g. Windstrike replacing Stormstrike)
+            -- is currently on cooldown.
+            if cvInfo.overrideSpellID
+                and cvInfo.overrideSpellID ~= 0
+                and cvInfo.overrideSpellID ~= spellID
+            then
+                local overCD = C_Spell.GetSpellCooldown(cvInfo.overrideSpellID)
+                if overCD and overCD.startTime and overCD.startTime > 0
+                    and overCD.duration and overCD.duration > 1.5
+                    and (overCD.startTime + overCD.duration) > now
+                then
+                    return false
+                end
+            end
+        end
+    end
+
+    return true
 end
 
 --- Rebuild Lookup-Tabelle (C_CooldownViewer enrichment).
 function CA:RebuildLookup()
     buildLookupTable()
+end
+
+--- Returns all spell IDs that share the same CooldownViewer cooldownID as
+-- the given spellID (i.e. linked spells whose CD changes together).
+-- Returns an empty table when C_CooldownViewer is unavailable.
+-- @param spellID number
+-- @return table  Array of linked spellIDs (excluding spellID itself)
+function CA:GetLinkedSpells(spellID)
+    local result = {}
+    if not hasCooldownViewer then return result end
+    local cooldownID = spellToCooldownID[spellID]
+    if not cooldownID then return result end
+    for sid, cid in pairs(spellToCooldownID) do
+        if cid == cooldownID and sid ~= spellID then
+            result[#result + 1] = sid
+        end
+    end
+    return result
 end
 
 --- Debug: Gibt alle bekannten spellID → cooldownID Mappings zurück.

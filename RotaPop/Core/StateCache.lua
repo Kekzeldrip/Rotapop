@@ -48,11 +48,25 @@ function SC:InvalidateAll()
     cache = {}
 end
 
--- SPELL_UPDATE_COOLDOWN → Lookup rebuild + alle invalidieren
+-- SPELL_UPDATE_COOLDOWN → targeted invalidation using event parameters.
 -- https://warcraft.wiki.gg/wiki/SPELL_UPDATE_COOLDOWN
-EB:Subscribe("SPELL_UPDATE_COOLDOWN", function()
-    Rotapop.CooldownAdapter:RebuildLookup()
-    refreshAll()
+-- Parameters (11.1.5+/12.x): spellID, baseSpellID, category, startRecoveryCategory
+EB:Subscribe("SPELL_UPDATE_COOLDOWN", function(_, spellID, baseSpellID)
+    if spellID then
+        -- Targeted: refresh the specific spell and its base spell.
+        refreshSpell(spellID)
+        if baseSpellID and baseSpellID ~= spellID then
+            refreshSpell(baseSpellID)
+        end
+        -- Also refresh all spells that share the same CooldownViewer entry
+        -- (linked spells whose cooldowns change together).
+        for _, linkedID in ipairs(Rotapop.CooldownAdapter:GetLinkedSpells(spellID)) do
+            refreshSpell(linkedID)
+        end
+    else
+        -- No spellID: full refresh (fired on login / spec-change / etc.)
+        refreshAll()
+    end
 end)
 
 -- SPELL_UPDATE_CHARGES → betroffenen Spell aktualisieren

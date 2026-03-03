@@ -2,6 +2,26 @@
 Rotapop = Rotapop or {}
 Rotapop.UI = Rotapop.UI or {}
 
+-- ============================================================
+-- Combat time tracking — exposed as Rotapop.getCombatTime()
+-- Used by APL conditions that need time<N checks.
+-- ============================================================
+local combatStartTime = 0
+
+Rotapop.EventBus:Subscribe("PLAYER_REGEN_DISABLED", function()
+    combatStartTime = GetTime()
+end)
+
+Rotapop.EventBus:Subscribe("PLAYER_REGEN_ENABLED", function()
+    combatStartTime = 0
+end)
+
+--- Returns seconds elapsed since entering combat (0 if out of combat).
+function Rotapop.getCombatTime()
+    if combatStartTime == 0 then return 0 end
+    return GetTime() - combatStartTime
+end
+
 local Display = {}
 Rotapop.UI.NextSpellDisplay = Display
 
