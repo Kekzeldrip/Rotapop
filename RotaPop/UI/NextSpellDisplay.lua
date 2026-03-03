@@ -89,10 +89,19 @@ function Display:Update()
 
     -- Update icon texture only when spell changes
     if nextSpell ~= lastSpellID then
-        local spellInfo = C_Spell.GetSpellInfo(nextSpell)
-        if spellInfo and spellInfo.iconID then
-            icon:SetTexture(spellInfo.iconID)
+        local iconTexture
+        local infoOk, spellInfo = pcall(C_Spell.GetSpellInfo, nextSpell)
+        if infoOk and spellInfo and spellInfo.iconID then
+            iconTexture = spellInfo.iconID
         end
+        -- Fallback: C_Spell.GetSpellTexture (more resilient for overridden spells)
+        if not iconTexture and C_Spell.GetSpellTexture then
+            local texOk, tex = pcall(C_Spell.GetSpellTexture, nextSpell)
+            if texOk and tex then
+                iconTexture = tex
+            end
+        end
+        icon:SetTexture(iconTexture or "Interface\\Icons\\INV_Misc_QuestionMark")
         lastSpellID = nextSpell
     end
 

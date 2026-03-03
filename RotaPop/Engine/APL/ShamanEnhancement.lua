@@ -191,8 +191,11 @@ local function evalList(list, unitState)
             local spellID   = entry[1]
             local condition = entry[2]
 
-            local ready = Rotapop.CooldownAdapter:IsReady(spellID)
-            if ready then
+            local readyOk, ready = pcall(
+                Rotapop.CooldownAdapter.IsReady,
+                Rotapop.CooldownAdapter, spellID
+            )
+            if readyOk and ready then
                 local condMet = true
                 if condition then
                     local ok, result = pcall(condition, unitState)
@@ -211,8 +214,8 @@ local function evalList(list, unitState)
         if not entry.sublist then
             local spellID   = entry[1]
             local condition = entry[2]
-            local spellInfo = C_Spell.GetSpellInfo(spellID)
-            if spellInfo then
+            local infoOk, spellInfo = pcall(C_Spell.GetSpellInfo, spellID)
+            if infoOk and spellInfo then
                 local condMet = true
                 if condition then
                     local ok, result = pcall(condition, unitState)
@@ -228,8 +231,8 @@ local function evalList(list, unitState)
     -- Pass 3: last resort — any known spell from the list
     for _, entry in ipairs(list) do
         if not entry.sublist then
-            local spellInfo = C_Spell.GetSpellInfo(entry[1])
-            if spellInfo then
+            local infoOk, spellInfo = pcall(C_Spell.GetSpellInfo, entry[1])
+            if infoOk and spellInfo then
                 return entry[1], false
             end
         end
