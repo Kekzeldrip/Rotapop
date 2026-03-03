@@ -6,6 +6,7 @@
 ## DefaultState: enabled
 
 Core/EventBus.lua
+Core/AssistedCombatAdapter.lua
 Core/CooldownAdapter.lua
 Core/StateCache.lua
 Engine/SimEngine.lua

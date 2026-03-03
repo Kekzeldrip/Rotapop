@@ -75,7 +75,24 @@ function Display:Update()
         if isReady == nil then isReady = true end
     end
 
-    if not ok or not nextSpell or not isReady then
+    -- C_AssistedCombat fallback: when SimEngine returns nothing, ask
+    -- Blizzard's built-in rotation helper before giving up.
+    if ok and not nextSpell then
+        local acSpell = Rotapop.AssistedCombat:GetNextCastSpell()
+        if acSpell then
+            nextSpell = acSpell
+            isReady   = true
+        else
+            -- Try first spell from the rotation list
+            local acSpells = Rotapop.AssistedCombat:GetRotationSpells()
+            if acSpells and #acSpells > 0 then
+                nextSpell = acSpells[1]
+                isReady   = false
+            end
+        end
+    end
+
+    if not ok or not nextSpell then
         if lastSpellID ~= nil then
             icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
             icon:SetDesaturated(false)
