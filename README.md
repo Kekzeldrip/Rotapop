@@ -22,7 +22,7 @@ Rotapop uses the new APIs directly — no workarounds, no legacy wrappers.
 
 | Layer | Description |
 |---|---|
-| **CooldownAdapter** | Normalises spell state via `C_Spell.*` APIs (primary) with optional `C_CooldownViewer.*` enrichment. |
+| **CooldownAdapter** | Normalizes spell state via `C_Spell.*` APIs (primary) with optional `C_CooldownViewer.*` enrichment. |
 | **StateCache** | Event-driven cache that refreshes tracked spells on `SPELL_UPDATE_COOLDOWN`, `SPELL_UPDATE_CHARGES`, cast events, and `UNIT_POWER_UPDATE`. |
 | **SimEngine** | APL priority engine — evaluates registered actions in priority order and returns the next castable spell. |
 | **UI** | Minimal next-spell icon with cooldown overlay; developer debug overlay (enable via `ROTAPOP_DEBUG = true`). |

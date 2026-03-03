@@ -1,5 +1,5 @@
 -- CooldownAdapter.lua
--- Normalises spell cooldown state using C_Spell.* APIs as primary source.
+-- Normalizes spell cooldown state using C_Spell.* APIs as primary source.
 --
 -- Fallback Design:
 --   1. C_Spell.GetSpellCooldown  — primary cooldown source
