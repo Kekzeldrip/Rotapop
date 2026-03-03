@@ -29,6 +29,18 @@ local SPELL = {
     ANCESTRAL_CALL      = 274738,
 }
 
+-- Talent spell IDs — used with hasTalent() to check if a talent is learned.
+-- These are DISTINCT from spell IDs used to cast abilities.
+local TALENT = {
+    THORIMS_INVOCATION = 384444,  -- Thorim's Invocation (hero talent)
+    STORM_UNLEASHED    = 390352,  -- Storm Unleashed
+    SPLITSTREAM        = 382033,  -- Splitstream (Lava Lash cleave talent)
+    FIRE_NOVA          = 333974,  -- Fire Nova
+    FERAL_SPIRIT       = 51533,   -- Feral Spirit (wolf summon)
+    SURGING_ELEMENTS   = 455100,  -- Surging Elements (passive; NOT Surging Totem 444995)
+    ELEMENTAL_TEMPO    = 383389,  -- Elemental Tempo (Maelstrom CD reduction)
+}
+
 local BUFF = {
     ASCENDANCE          = 114051,
     DOOM_WINDS          = 384352,
@@ -145,23 +157,48 @@ local function hasTalent(spellID)
     return ok and result or false
 end
 
+--- Surging Totem pet aktiv (Earth totem slot).
+-- Approximates pet.surging_totem.active for Totemic builds.
+local function isSurgingTotemActive()
+    local ok, haveTotem, _, startTime, duration = pcall(GetTotemInfo, 2)
+    if not ok or not haveTotem then return false end
+    return startTime ~= nil and duration ~= nil
+        and (startTime + duration) > GetTime()
+end
+
+--- Searing Totem pet aktiv (Fire totem slot).
+-- Approximates pet.searing_totem.active for AOE lava_lash check.
+local function isSearingTotemActive()
+    local ok, haveTotem, _, startTime, duration = pcall(GetTotemInfo, 1)
+    if not ok or not haveTotem then return false end
+    return startTime ~= nil and duration ~= nil
+        and (startTime + duration) > GetTime()
+end
+
 -- ============================================================
 -- evalList — wertet eine APL-Liste aus
+-- Supports { sublist = list } entries for call_action_list.
 -- ============================================================
 local function evalList(list, unitState)
     for _, entry in ipairs(list) do
-        local spellID   = entry[1]
-        local condition = entry[2]
+        if entry.sublist then
+            -- call_action_list: evaluate the named sub-list inline
+            local result = evalList(entry.sublist, unitState)
+            if result then return result end
+        else
+            local spellID   = entry[1]
+            local condition = entry[2]
 
-        local ready = Rotapop.CooldownAdapter:IsReady(spellID)
-        if ready then
-            local condMet = true
-            if condition then
-                local ok, result = pcall(condition, unitState)
-                condMet = ok and (result == true)
-            end
-            if condMet then
-                return spellID
+            local ready = Rotapop.CooldownAdapter:IsReady(spellID)
+            if ready then
+                local condMet = true
+                if condition then
+                    local ok, result = pcall(condition, unitState)
+                    condMet = ok and (result == true)
+                end
+                if condMet then
+                    return spellID
+                end
             end
         end
     end
@@ -173,6 +210,27 @@ end
 -- ============================================================
 local APL = {}
 
+-- Shared buffs condition:
+-- blood_fury/berserking/fireblood/ancestral_call,if=
+--   (buff.ascendance.up | buff.doom_winds.up | pet.surging_totem.active |
+--    (!talent.ascendance.enabled & !talent.doom_winds.enabled &
+--     !talent.surging_totem.enabled))
+local function buffsCondition()
+    return hasBuff(BUFF.ASCENDANCE)
+        or hasBuff(BUFF.DOOM_WINDS)
+        or isSurgingTotemActive()
+        or (not hasTalent(SPELL.ASCENDANCE)
+            and not hasTalent(SPELL.DOOM_WINDS)
+            and not hasTalent(SPELL.SURGING_TOTEM))
+end
+
+APL.buffs = {
+    { SPELL.BLOOD_FURY,     buffsCondition },
+    { SPELL.BERSERKING,     buffsCondition },
+    { SPELL.FIREBLOOD,      buffsCondition },
+    { SPELL.ANCESTRAL_CALL, buffsCondition },
+}
+
 APL.single_sb = {
     { SPELL.PRIMORDIAL_STORM, function()
         local mw = getMaelstromStacks()
@@ -180,31 +238,48 @@ APL.single_sb = {
             or (getAuraRemains(BUFF.PRIMORDIAL_STORM, "player", "HELPFUL") <= 4
                 and mw >= 5)
     end },
+    -- voltaic_blaze,if=dot.flame_shock.remains=0&time<5
     { SPELL.VOLTAIC_BLAZE, function()
         return getAuraRemains(DEBUFF.FLAME_SHOCK, "target", "HARMFUL") == 0
+            and Rotapop.getCombatTime() < 5
     end },
+    -- lava_lash,if=!debuff.lashing_flames.up&time<5
     { SPELL.LAVA_LASH, function()
         return not targetHasDebuff(DEBUFF.LASHING_FLAMES)
+            and Rotapop.getCombatTime() < 5
     end },
-    { SPELL.BLOOD_FURY, function()
-        return hasBuff(BUFF.ASCENDANCE) or hasBuff(BUFF.DOOM_WINDS)
-    end },
-    { SPELL.BERSERKING, function()
-        return hasBuff(BUFF.ASCENDANCE) or hasBuff(BUFF.DOOM_WINDS)
-    end },
+    -- call_action_list,name=buffs
+    { sublist = APL.buffs },
+    -- sundering,if=talent.surging_elements.enabled|talent.feral_spirit.enabled
     { SPELL.SUNDERING, function()
-        return hasTalent(SPELL.SURGING_TOTEM) or hasTalent(51533)
+        return hasTalent(TALENT.SURGING_ELEMENTS) or hasTalent(TALENT.FERAL_SPIRIT)
     end },
     { SPELL.DOOM_WINDS, nil },
+    -- crash_lightning,if=!buff.crash_lightning.up|talent.storm_unleashed.enabled
     { SPELL.CRASH_LIGHTNING, function()
-        return not hasBuff(BUFF.CRASH_LIGHTNING) or hasTalent(390352)
+        return not hasBuff(BUFF.CRASH_LIGHTNING) or hasTalent(TALENT.STORM_UNLEASHED)
     end },
+    -- voltaic_blaze,if=(buff.doom_winds.up&buff.maelstrom_weapon.stack>=10-(1+2*talent.fire_nova.enabled)&!buff.maelstrom_weapon.stack=10)&talent.thorims_invocation.enabled
+    { SPELL.VOLTAIC_BLAZE, function()
+        local mw = getMaelstromStacks()
+        local threshold = 10 - (1 + 2 * (hasTalent(TALENT.FIRE_NOVA) and 1 or 0))
+        return hasBuff(BUFF.DOOM_WINDS)
+            and mw >= threshold
+            and mw ~= 10
+            and hasTalent(TALENT.THORIMS_INVOCATION)
+    end },
+    -- windstrike,if=buff.maelstrom_weapon.stack>0&talent.thorims_invocation.enabled
     { SPELL.WINDSTRIKE, function()
-        return getMaelstromStacks() > 0 and hasTalent(384444)
+        return getMaelstromStacks() > 0 and hasTalent(TALENT.THORIMS_INVOCATION)
     end },
     { SPELL.ASCENDANCE, nil },
+    -- stormstrike,if=buff.doom_winds.up&talent.thorims_invocation.enabled
     { SPELL.STORMSTRIKE, function()
-        return hasBuff(BUFF.DOOM_WINDS) and hasTalent(384444)
+        return hasBuff(BUFF.DOOM_WINDS) and hasTalent(TALENT.THORIMS_INVOCATION)
+    end },
+    -- crash_lightning,if=buff.doom_winds.up&talent.thorims_invocation.enabled
+    { SPELL.CRASH_LIGHTNING, function()
+        return hasBuff(BUFF.DOOM_WINDS) and hasTalent(TALENT.THORIMS_INVOCATION)
     end },
     { SPELL.TEMPEST, function()
         return getMaelstromStacks() == 10
@@ -229,27 +304,25 @@ APL.single_sb = {
 }
 
 APL.single_totemic = {
+    -- voltaic_blaze,if=dot.flame_shock.remains=0
     { SPELL.VOLTAIC_BLAZE, function()
         return getAuraRemains(DEBUFF.FLAME_SHOCK, "target", "HARMFUL") == 0
     end },
     { SPELL.SURGING_TOTEM, nil },
-    { SPELL.BLOOD_FURY, function()
-        return hasBuff(BUFF.ASCENDANCE) or hasBuff(BUFF.DOOM_WINDS)
-    end },
-    { SPELL.BERSERKING, function()
-        return hasBuff(BUFF.ASCENDANCE) or hasBuff(BUFF.DOOM_WINDS)
-    end },
+    -- call_action_list,name=buffs
+    { sublist = APL.buffs },
     { SPELL.LAVA_LASH, function()
         return hasBuff(BUFF.WHIRLING_FIRE) or hasBuff(BUFF.HOT_HAND)
     end },
+    -- sundering,if=talent.surging_elements.enabled|buff.whirling_earth.up|talent.feral_spirit.enabled
     { SPELL.SUNDERING, function()
-        return hasTalent(SPELL.SURGING_TOTEM)
+        return hasTalent(TALENT.SURGING_ELEMENTS)
             or hasBuff(BUFF.WHIRLING_EARTH)
-            or hasTalent(51533)
+            or hasTalent(TALENT.FERAL_SPIRIT)
     end },
     { SPELL.DOOM_WINDS, nil },
     { SPELL.CRASH_LIGHTNING, function()
-        return not hasBuff(BUFF.CRASH_LIGHTNING) or hasTalent(390352)
+        return not hasBuff(BUFF.CRASH_LIGHTNING) or hasTalent(TALENT.STORM_UNLEASHED)
     end },
     { SPELL.PRIMORDIAL_STORM, function()
         local mw = getMaelstromStacks()
@@ -257,23 +330,33 @@ APL.single_totemic = {
             or (getAuraRemains(BUFF.PRIMORDIAL_STORM, "player", "HELPFUL") < 3.5
                 and mw >= 5)
     end },
+    -- windstrike,if=talent.thorims_invocation.enabled&buff.ascendance.up
     { SPELL.WINDSTRIKE, function()
-        return hasTalent(384444) and hasBuff(BUFF.ASCENDANCE)
+        return hasTalent(TALENT.THORIMS_INVOCATION) and hasBuff(BUFF.ASCENDANCE)
     end },
+    -- ascendance,if=ti_lightning_bolt
+    -- ti_lightning_bolt ≈ Thorim's Invocation learned & Ascendance not up
     { SPELL.ASCENDANCE, function()
-        return hasTalent(384444) and not hasBuff(BUFF.ASCENDANCE)
+        return hasTalent(TALENT.THORIMS_INVOCATION) and not hasBuff(BUFF.ASCENDANCE)
     end },
+    -- crash_lightning,if=talent.thorims_invocation.enabled&buff.doom_winds.up|buff.ascendance.up
     { SPELL.CRASH_LIGHTNING, function()
-        return (hasTalent(384444) and hasBuff(BUFF.DOOM_WINDS))
+        return (hasTalent(TALENT.THORIMS_INVOCATION) and hasBuff(BUFF.DOOM_WINDS))
             or hasBuff(BUFF.ASCENDANCE)
     end },
     { SPELL.STORMSTRIKE, function()
-        return hasTalent(384444) and hasBuff(BUFF.DOOM_WINDS)
+        return hasTalent(TALENT.THORIMS_INVOCATION) and hasBuff(BUFF.DOOM_WINDS)
     end },
+    -- lightning_bolt,if=talent.elemental_tempo.enabled&(buff.maelstrom_weapon.stack>=5&
+    --   (cooldown.lava_lash.remains>gcd.max)&(cooldown.lava_lash.remains<=buff.maelstrom_weapon.stack*0.3)
+    --   |buff.maelstrom_weapon.stack>=10)
     { SPELL.LIGHTNING_BOLT, function()
         local mw = getMaelstromStacks()
-        return mw >= 10
-            or (mw >= 5 and getCDRemains(SPELL.LAVA_LASH) > 0)
+        if not hasTalent(TALENT.ELEMENTAL_TEMPO) then return false end
+        if mw >= 10 then return true end
+        local llCD = getCDRemains(SPELL.LAVA_LASH)
+        -- gcd.max approximated as 1.5 seconds
+        return mw >= 5 and llCD > 1.5 and llCD <= mw * 0.3
     end },
     { SPELL.CRASH_LIGHTNING, function()
         return not hasBuff(BUFF.CRASH_LIGHTNING)
@@ -296,39 +379,39 @@ APL.aoe = {
             and getAuraRemains(DEBUFF.FLAME_SHOCK, "target", "HARMFUL") == 0
     end },
     { SPELL.SURGING_TOTEM, nil },
+    -- ascendance,if=ti_chain_lightning
+    -- ti_chain_lightning ≈ Thorim's Invocation learned & Ascendance not up
     { SPELL.ASCENDANCE, function()
-        return hasTalent(384444) and not hasBuff(BUFF.ASCENDANCE)
+        return hasTalent(TALENT.THORIMS_INVOCATION) and not hasBuff(BUFF.ASCENDANCE)
     end },
-    { SPELL.BLOOD_FURY, function()
-        return hasBuff(BUFF.ASCENDANCE) or hasBuff(BUFF.DOOM_WINDS)
-    end },
-    { SPELL.BERSERKING, function()
-        return hasBuff(BUFF.ASCENDANCE) or hasBuff(BUFF.DOOM_WINDS)
-    end },
+    -- call_action_list,name=buffs
+    { sublist = APL.buffs },
+    -- sundering,if=talent.surging_elements.enabled|buff.whirling_earth.up
     { SPELL.SUNDERING, function()
-        return hasTalent(SPELL.SURGING_TOTEM) or hasBuff(BUFF.WHIRLING_EARTH)
+        return hasTalent(TALENT.SURGING_ELEMENTS) or hasBuff(BUFF.WHIRLING_EARTH)
     end },
     { SPELL.LAVA_LASH, function()
         return hasBuff(BUFF.WHIRLING_FIRE)
     end },
     { SPELL.DOOM_WINDS, nil },
     { SPELL.CRASH_LIGHTNING, function()
-        return hasTalent(384444)
+        return hasTalent(TALENT.THORIMS_INVOCATION)
             and hasBuff(BUFF.WHIRLING_AIR)
             and (hasBuff(BUFF.DOOM_WINDS) or hasBuff(BUFF.ASCENDANCE))
     end },
     { SPELL.WINDSTRIKE, function()
-        return hasTalent(384444)
+        return hasTalent(TALENT.THORIMS_INVOCATION)
             and hasBuff(BUFF.WHIRLING_AIR)
             and hasBuff(BUFF.ASCENDANCE)
     end },
     { SPELL.STORMSTRIKE, function()
-        return hasTalent(384444)
+        return hasTalent(TALENT.THORIMS_INVOCATION)
             and hasBuff(BUFF.WHIRLING_AIR)
             and hasBuff(BUFF.DOOM_WINDS)
     end },
+    -- lava_lash,if=talent.splitstream.enabled&buff.hot_hand.up
     { SPELL.LAVA_LASH, function()
-        return hasTalent(382033) and hasBuff(BUFF.HOT_HAND)
+        return hasTalent(TALENT.SPLITSTREAM) and hasBuff(BUFF.HOT_HAND)
     end },
     { SPELL.TEMPEST, function()
         local mw = getMaelstromStacks()
@@ -338,8 +421,9 @@ APL.aoe = {
     { SPELL.PRIMORDIAL_STORM, function()
         return getMaelstromStacks() >= 10
     end },
+    -- voltaic_blaze,if=talent.fire_nova.enabled
     { SPELL.VOLTAIC_BLAZE, function()
-        return hasTalent(333974)
+        return hasTalent(TALENT.FIRE_NOVA)
     end },
     { SPELL.CRASH_LIGHTNING, nil },
     { SPELL.WINDSTRIKE, nil },
@@ -351,9 +435,13 @@ APL.aoe = {
         return getMaelstromStacks() >= threshold
     end },
     { SPELL.SUNDERING, function()
-        return hasTalent(51533)
+        return hasTalent(TALENT.FERAL_SPIRIT)
     end },
     { SPELL.VOLTAIC_BLAZE, nil },
+    -- lava_lash,if=pet.searing_totem.active
+    { SPELL.LAVA_LASH, function()
+        return isSearingTotemActive()
+    end },
     { SPELL.STORMSTRIKE, function()
         local cf = getChargesFractional(SPELL.STORMSTRIKE)
         local data = getAuraData("player", BUFF.CONVERGING_STORMS, "HELPFUL")
@@ -390,3 +478,4 @@ function SE:GetNextSpell(unitState)
         return evalList(APL.single_sb, unitState)
     end
 end
+
