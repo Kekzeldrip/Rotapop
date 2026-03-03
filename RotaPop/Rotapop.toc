@@ -1,0 +1,15 @@
+## Interface: 120001
+## Title: Rotapop
+## Notes: SimC-based rotation assistant for WoW 12.x
+## Author: Rotapop Contributors
+## Version: 0.1.0
+## DefaultState: enabled
+
+Core/EventBus.lua
+Core/StateCache.lua
+Core/CooldownAdapter.lua
+Engine/SimEngine.lua
+Engine/APL/ShamanEnhancement.lua
+UI/DebugOverlay.lua
+UI/NextSpellDisplay.lua
+Rotapop.lua
