@@ -8,7 +8,8 @@ Rotapop = Rotapop or {}
 Rotapop.StateCache = {}
 
 local SC = Rotapop.StateCache
-local CA = Rotapop.CooldownAdapter
+-- NOTE: CooldownAdapter and EventBus references are resolved at call time
+-- (not at load time) to tolerate any load-order variation.
 local EB = Rotapop.EventBus
 
 local cache = {}
@@ -22,13 +23,13 @@ end
 
 local function refreshSpell(spellID)
     if SC.trackedSpells[spellID] then
-        cache[spellID] = CA:GetSpellState(spellID)
+        cache[spellID] = Rotapop.CooldownAdapter:GetSpellState(spellID)
     end
 end
 
 local function refreshAll()
     for spellID in pairs(SC.trackedSpells) do
-        cache[spellID] = CA:GetSpellState(spellID)
+        cache[spellID] = Rotapop.CooldownAdapter:GetSpellState(spellID)
     end
 end
 
@@ -37,7 +38,7 @@ end
 -- @return table|nil
 function SC:GetState(spellID)
     if not cache[spellID] then
-        cache[spellID] = CA:GetSpellState(spellID)
+        cache[spellID] = Rotapop.CooldownAdapter:GetSpellState(spellID)
     end
     return cache[spellID]
 end
