@@ -58,24 +58,54 @@ local function getUnitState()
     }
 end
 
+-- Track last displayed spell to avoid redundant texture swaps
+local lastSpellID = nil
+local lastReady   = nil
+
 function Display:Update()
-    local ok, nextSpell = pcall(
+    local ok, nextSpell, isReady = pcall(
         Rotapop.SimEngine.GetNextSpell,
         Rotapop.SimEngine,
         getUnitState()
     )
 
+    -- pcall returns: ok, retval1, retval2
+    -- If the engine doesn't return isReady (e.g. old DefaultPriority), default to true
+    if ok and nextSpell then
+        if isReady == nil then isReady = true end
+    end
+
     if not ok or not nextSpell then
-        icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-        cdOverlay:Clear()
+        if lastSpellID ~= nil then
+            icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            icon:SetDesaturated(false)
+            icon:SetVertexColor(1, 1, 1, 1)
+            cdOverlay:Clear()
+            lastSpellID = nil
+            lastReady   = nil
+        end
         return
     end
 
-    -- Icon
-    -- C_Spell.GetSpellInfo → https://warcraft.wiki.gg/wiki/API_C_Spell.GetSpellInfo
-    local spellInfo = C_Spell.GetSpellInfo(nextSpell)
-    if spellInfo and spellInfo.iconID then
-        icon:SetTexture(spellInfo.iconID)
+    -- Update icon texture only when spell changes
+    if nextSpell ~= lastSpellID then
+        local spellInfo = C_Spell.GetSpellInfo(nextSpell)
+        if spellInfo and spellInfo.iconID then
+            icon:SetTexture(spellInfo.iconID)
+        end
+        lastSpellID = nextSpell
+    end
+
+    -- Visual distinction: ready = full color, waiting = desaturated
+    if isReady ~= lastReady then
+        if isReady then
+            icon:SetDesaturated(false)
+            icon:SetVertexColor(1, 1, 1, 1)
+        else
+            icon:SetDesaturated(true)
+            icon:SetVertexColor(0.6, 0.6, 0.6, 1)
+        end
+        lastReady = isReady
     end
 
     -- Cooldown Overlay

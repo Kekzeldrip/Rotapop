@@ -2,7 +2,7 @@
 ## Title: Rotapop
 ## Notes: SimC-based rotation assistant for WoW 12.x
 ## Author: Rotapop Contributors
-## Version: 0.1.0
+## Version: 0.2.0
 ## DefaultState: enabled
 
 Core/EventBus.lua
@@ -10,6 +10,7 @@ Core/CooldownAdapter.lua
 Core/StateCache.lua
 Engine/SimEngine.lua
 Engine/DefaultPriority.lua
+Engine/APL/SimCParser.lua
 Engine/APL/ShamanEnhancement.lua
 UI/DebugOverlay.lua
 UI/NextSpellDisplay.lua
