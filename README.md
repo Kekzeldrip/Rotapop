@@ -23,6 +23,7 @@ Rotapop uses the new APIs directly — no workarounds, no legacy wrappers.
 | Layer | Description |
 |---|---|
 | **CooldownAdapter** | Normalizes spell state via `C_Spell.*` APIs (primary) with optional `C_CooldownViewer.*` enrichment. |
+| **AssistedCombatAdapter** | Fallback data source using `C_AssistedCombat` (Blizzard's built-in rotation helper). Queried when the APL cannot determine a spell. |
 | **StateCache** | Event-driven cache that refreshes tracked spells on `SPELL_UPDATE_COOLDOWN`, `SPELL_UPDATE_CHARGES`, cast events, and `UNIT_POWER_UPDATE`. |
 | **SimEngine** | APL priority engine — evaluates registered actions in priority order and returns the next castable spell. |
 | **UI** | Minimal next-spell icon with cooldown overlay; developer debug overlay (enable via `ROTAPOP_DEBUG = true`). |
@@ -46,6 +47,14 @@ APIs only. No dependency on removed global functions such as the old
 4. `C_CooldownViewer.GetCooldownViewerCooldownInfo` — **optional** enrichment
    for linked-spell data; only used when available and verified
    ([docs](https://warcraft.wiki.gg/wiki/API_C_CooldownViewer.GetCooldownViewerCooldownInfo))
+
+When the SimEngine APL cannot determine a spell (all passes return nil), the
+UI falls back to `C_AssistedCombat`:
+
+5. `C_AssistedCombat.GetNextCastSpell` — Blizzard's built-in rotation
+   recommendation; used as ultimate fallback so the icon never shows "?"
+6. `C_AssistedCombat.GetRotationSpells` — full rotation spell list; used
+   when `GetNextCastSpell` is unavailable
 
 ## Quick Reference
 
