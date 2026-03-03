@@ -60,6 +60,49 @@ APIs only. No dependency on removed global functions such as the old
 | `SPELL_UPDATE_COOLDOWN` | <https://warcraft.wiki.gg/wiki/SPELL_UPDATE_COOLDOWN> |
 | Original Hekili (reference only) | <https://github.com/Hekili/hekili> |
 
+## SimC APL Import
+
+Rotapop can import SimulationCraft action priority lists at runtime.
+
+### Single-line import
+
+```
+/rotapop simc actions=stormstrike
+/rotapop simc actions+=/lava_lash,if=buff.hot_hand.up
+```
+
+### Multi-line import
+
+```
+/rotapop simcstart
+actions=stormstrike
+actions+=/lava_lash,if=buff.hot_hand.up
+actions+=/crash_lightning
+actions+=/lightning_bolt,if=buff.maelstrom_weapon.stack>=5
+/rotapop simcend
+```
+
+### Custom spell mappings
+
+If your SimC profile uses spell names not in the default mapping:
+
+```
+/rotapop spell my_ability 123456
+```
+
+### Supported condition syntax
+
+| SimC Syntax | Example |
+|---|---|
+| `buff.X.up` / `buff.X.down` | `buff.ascendance.up` |
+| `buff.X.remains` | `buff.doom_winds.remains<5` |
+| `buff.X.stack` | `buff.maelstrom_weapon.stack>=10` |
+| `debuff.X.up` / `debuff.X.remains` | `debuff.flame_shock.remains=0` |
+| `cooldown.X.ready` / `cooldown.X.remains` | `cooldown.doom_winds.ready` |
+| `talent.X.enabled` | `talent.thorims_invocation.enabled` |
+| `active_enemies>N` | `active_enemies>1` |
+| `&` (and), `\|` (or), `!` (not) | `buff.ascendance.up&!debuff.flame_shock.up` |
+
 ## Installation
 
 Copy the `RotaPop` folder into your WoW `Interface/AddOns` directory.

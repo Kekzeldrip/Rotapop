@@ -178,13 +178,15 @@ end
 -- ============================================================
 -- evalList — wertet eine APL-Liste aus
 -- Supports { sublist = list } entries for call_action_list.
+-- Returns: spellID|nil, isReady (true = castable now)
+-- Two-pass: first IsReady+condition, then condition-only fallback.
 -- ============================================================
 local function evalList(list, unitState)
+    -- Pass 1: find a spell that is both ready and meets its condition
     for _, entry in ipairs(list) do
         if entry.sublist then
-            -- call_action_list: evaluate the named sub-list inline
-            local result = evalList(entry.sublist, unitState)
-            if result then return result end
+            local result, ready = evalList(entry.sublist, unitState)
+            if result and ready then return result, true end
         else
             local spellID   = entry[1]
             local condition = entry[2]
@@ -197,12 +199,43 @@ local function evalList(list, unitState)
                     condMet = ok and (result == true)
                 end
                 if condMet then
-                    return spellID
+                    return spellID, true
                 end
             end
         end
     end
-    return nil
+
+    -- Pass 2: fallback — find first known spell whose condition passes
+    -- (even if on cooldown). Shows "what's coming next" instead of "?".
+    for _, entry in ipairs(list) do
+        if not entry.sublist then
+            local spellID   = entry[1]
+            local condition = entry[2]
+            local spellInfo = C_Spell.GetSpellInfo(spellID)
+            if spellInfo then
+                local condMet = true
+                if condition then
+                    local ok, result = pcall(condition, unitState)
+                    condMet = ok and (result == true)
+                end
+                if condMet then
+                    return spellID, false
+                end
+            end
+        end
+    end
+
+    -- Pass 3: last resort — any known spell from the list
+    for _, entry in ipairs(list) do
+        if not entry.sublist then
+            local spellInfo = C_Spell.GetSpellInfo(entry[1])
+            if spellInfo then
+                return entry[1], false
+            end
+        end
+    end
+
+    return nil, false
 end
 
 -- ============================================================
