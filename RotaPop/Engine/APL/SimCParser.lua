@@ -198,8 +198,15 @@ function Parser:CompileCondition(condStr)
         return string.format("(getAuraData('target',%d,'HARMFUL')==nil)", id)
     end)
 
-    -- debuff.X.remains / dot.X.remains
-    expr = expr:gsub("[de][eo][bt]u?f?f?%.([%w_]+)%.remains", function(name)
+    -- debuff.X.remains
+    expr = expr:gsub("debuff%.([%w_]+)%.remains", function(name)
+        local id = debuffMap[name]
+        if not id then return "0" end
+        return string.format("getDebuffRemains(%d)", id)
+    end)
+
+    -- dot.X.remains (SimC alias for debuff)
+    expr = expr:gsub("dot%.([%w_]+)%.remains", function(name)
         local id = debuffMap[name]
         if not id then return "0" end
         return string.format("getDebuffRemains(%d)", id)
@@ -238,9 +245,11 @@ function Parser:CompileCondition(condStr)
     -- pet.searing_totem.active
     expr = expr:gsub("pet%.searing_totem%.active", "isSearingTotemActive()")
 
-    -- time (combat time)
+    -- time (combat time) — replace standalone "time" token
+    -- Pad with spaces to simplify boundary detection, then trim after
+    expr = " " .. expr .. " "
     expr = expr:gsub("([^%w_])time([^%w_])", "%1getCombatTime()%2")
-    expr = expr:gsub("^time([^%w_])", "getCombatTime()%1")
+    expr = expr:match("^%s*(.-)%s*$")
 
     -- SimC logical operators → Lua
     expr = expr:gsub("&", " and ")
@@ -253,6 +262,27 @@ function Parser:CompileCondition(condStr)
 
     -- SimC != → Lua ~=
     expr = expr:gsub("!=", "~=")
+
+    -- Sanitize: only allow known safe tokens in the compiled expression.
+    -- This prevents arbitrary code execution via loadstring.
+    local sanitized = expr:gsub("[%s%d%.%(%)]+", "")         -- strip spaces, numbers, parens
+        :gsub("getAuraData", ""):gsub("getBuffRemains", "")
+        :gsub("getDebuffRemains", ""):gsub("getBuffStacks", "")
+        :gsub("getCDRemains", ""):gsub("hasTalent", "")
+        :gsub("getActiveEnemies", ""):gsub("isSurgingTotemActive", "")
+        :gsub("isSearingTotemActive", ""):gsub("getCombatTime", "")
+        :gsub("math%.huge", ""):gsub("math%.max", "")
+        :gsub("true", ""):gsub("false", ""):gsub("nil", "")
+        :gsub("and", ""):gsub("or", ""):gsub("not", "")
+        :gsub("[><=~,'+*/%-]", "")
+    sanitized = sanitized:match("^%s*(.-)%s*$") or ""
+    if sanitized ~= "" then
+        if ROTAPOP_DEBUG then
+            print("|cffff0000Rotapop SimCParser|r rejected unsafe tokens: "
+                .. sanitized .. " | expr: " .. expr)
+        end
+        return nil
+    end
 
     -- Build the function with helper locals in scope
     local funcStr = string.format([[
@@ -314,7 +344,10 @@ function Parser:CompileCondition(condStr)
                 and (startTime + duration) > GetTime()
         end
         local function getCombatTime()
-            return Rotapop.getCombatTime and Rotapop.getCombatTime() or 0
+            if Rotapop.getCombatTime then
+                return Rotapop.getCombatTime()
+            end
+            return 0
         end
 
         return function() return (%s) end

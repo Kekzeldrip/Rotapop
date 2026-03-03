@@ -39,7 +39,13 @@ SlashCmdList["ROTAPOP"] = function(msg)
             print("|cff00ff00Rotapop|r Usage: /rotapop simc <paste SimC action list>")
             print("|cff00ff00Rotapop|r Example: /rotapop simc actions=stormstrike")
             print("|cff00ff00Rotapop|r Tip: For multi-line profiles, use /rotapop simcstart"
-                .. " then paste lines, then /rotapop simcend")
+                .. " then /rotapop simc <line> per line, then /rotapop simcend")
+            return
+        end
+        -- Multi-line buffer mode: append line instead of importing directly
+        if Rotapop._simcBuffer then
+            table.insert(Rotapop._simcBuffer, rest)
+            print("|cff00ff00Rotapop|r buffered: " .. rest)
             return
         end
         local ok = Rotapop.SimCParser:ImportAndActivate(rest)
@@ -90,12 +96,3 @@ SlashCmdList["ROTAPOP"] = function(msg)
         print("  /rotapop debug           — toggle debug overlay")
     end
 end
-
--- Capture chat input for multi-line SimC mode
-local chatFrame = CreateFrame("Frame")
-chatFrame:SetScript("OnEvent", function(_, _, msg)
-    if Rotapop._simcBuffer and msg and msg:match("^actions") then
-        table.insert(Rotapop._simcBuffer, msg)
-        return
-    end
-end)
